@@ -1,6 +1,4 @@
-import { SeoAnalysis } from './types';
-
-const clean = (text: string) => text.trim().toLowerCase();
+import { SeoAnalysis, SeoCheck } from './types';
 
 export function analyzeSeo(
   title: string,
@@ -8,52 +6,92 @@ export function analyzeSeo(
   metaDescription: string,
   tags: string[]
 ): SeoAnalysis {
-  const normalizedTitle = clean(title);
-  const normalizedContent = clean(content);
-  const normalizedMeta = clean(metaDescription);
-  const firstKeyword = tags[0]?.trim().toLowerCase() ?? '';
+  const checks: SeoCheck[] = [];
 
-  const checks = {
-    titleLength: title.trim().length >= 35 && title.trim().length <= 65,
-    contentLength: content.trim().length >= 600,
-    metaDescriptionLength: normalizedMeta.length >= 120 && normalizedMeta.length <= 160,
-    keywordInTitle: firstKeyword.length > 0 && normalizedTitle.includes(firstKeyword),
-    keywordInContent: firstKeyword.length > 0 && normalizedContent.includes(firstKeyword),
-    hasTags: tags.length >= 2
-  };
+  // Title checks
+  checks.push({
+    label: 'Title length',
+    passed: title.length >= 30 && title.length <= 70,
+    message:
+      title.length < 30
+        ? `Title too short (${title.length}/30 min chars)`
+        : title.length > 70
+        ? `Title too long (${title.length}/70 max chars)`
+        : `Title length is great (${title.length} chars)`
+  });
 
-  const totalChecks = Object.keys(checks).length;
-  const passedChecks = Object.values(checks).filter(Boolean).length;
-  const score = Math.round((passedChecks / totalChecks) * 100);
+  checks.push({
+    label: 'Title has keyword',
+    passed: title.trim().split(/\s+/).length >= 3,
+    message:
+      title.trim().split(/\s+/).length >= 3
+        ? 'Title contains multiple words (good for keywords)'
+        : 'Title should have at least 3 words'
+  });
 
-  const suggestions: string[] = [];
+  // Meta description
+  checks.push({
+    label: 'Meta description length',
+    passed: metaDescription.length >= 120 && metaDescription.length <= 160,
+    message:
+      metaDescription.length === 0
+        ? 'Meta description is missing'
+        : metaDescription.length < 120
+        ? `Meta description too short (${metaDescription.length}/120 min)`
+        : metaDescription.length > 160
+        ? `Meta description too long (${metaDescription.length}/160 max)`
+        : `Meta description length is perfect (${metaDescription.length} chars)`
+  });
 
-  if (!checks.titleLength) {
-    suggestions.push('Keep title between 35–65 characters for stronger SERP readability.');
-  }
-  if (!checks.contentLength) {
-    suggestions.push('Expand content to at least 600 characters for richer indexing context.');
-  }
-  if (!checks.metaDescriptionLength) {
-    suggestions.push('Meta description should be 120–160 characters.');
-  }
-  if (!checks.hasTags) {
-    suggestions.push('Add at least 2 tags to improve discoverability.');
-  }
-  if (firstKeyword.length === 0) {
-    suggestions.push('Add tags so primary keyword checks can be performed.');
-  } else {
-    if (!checks.keywordInTitle) {
-      suggestions.push(`Include primary keyword "${firstKeyword}" in the title.`);
-    }
-    if (!checks.keywordInContent) {
-      suggestions.push(`Use primary keyword "${firstKeyword}" naturally in content.`);
-    }
-  }
+  // Content length
+  const wordCount = content.trim().split(/\s+/).filter(Boolean).length;
+  checks.push({
+    label: 'Content length',
+    passed: wordCount >= 300,
+    message:
+      wordCount >= 300
+        ? `Content has ${wordCount} words (great!)`
+        : `Content needs more words (${wordCount}/300 min)`
+  });
 
-  return {
-    score,
-    checks,
-    suggestions
-  };
+  // Tags
+  checks.push({
+    label: 'Tags present',
+    passed: tags.length >= 2,
+    message:
+      tags.length >= 2
+        ? `${tags.length} tags added (good for discoverability)`
+        : `Add at least 2 tags (currently ${tags.length})`
+  });
+
+  // Keyword in content
+  const titleWords = title
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 4);
+  const contentLower = content.toLowerCase();
+  const keywordInContent =
+    titleWords.length > 0 && titleWords.some((w) => contentLower.includes(w));
+  checks.push({
+    label: 'Keyword in content',
+    passed: keywordInContent,
+    message: keywordInContent
+      ? 'Title keywords appear in content'
+      : 'Include title keywords in your content body'
+  });
+
+  // Headings
+  const hasHeadings = /#{1,3}\s/.test(content) || /<h[1-3]/i.test(content);
+  checks.push({
+    label: 'Headings used',
+    passed: hasHeadings,
+    message: hasHeadings
+      ? 'Headings detected in content'
+      : 'Add headings (## or ###) to structure your content'
+  });
+
+  const passed = checks.filter((c) => c.passed).length;
+  const score = Math.round((passed / checks.length) * 100);
+
+  return { score, checks };
 }

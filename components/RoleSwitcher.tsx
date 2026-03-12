@@ -1,44 +1,54 @@
+'use client';
+
 import { Role } from '@/lib/types';
 
-type RoleSwitcherProps = {
+interface Props {
   role: Role;
-  onChange: (role: Role) => void;
+  onChange: (r: Role) => void;
+}
+
+const roles: Role[] = ['writer', 'editor', 'admin'];
+
+const roleEmoji: Record<Role, string> = {
+  writer: '✍️',
+  editor: '🔍',
+  admin: '👑'
 };
 
-const roleDescriptions: Record<Role, string> = {
-  writer: 'Can draft and schedule posts',
-  editor: 'Can draft, publish, and refine content',
-  admin: 'Full control: publish, schedule, and analytics governance'
+const roleDesc: Record<Role, string> = {
+  writer: 'Create & save drafts',
+  editor: 'Review & publish posts',
+  admin: 'Full access + analytics'
 };
 
-export function RoleSwitcher({ role, onChange }: RoleSwitcherProps) {
-  const roles: Role[] = ['writer', 'editor', 'admin'];
-
+export function RoleSwitcher({ role, onChange }: Props) {
   return (
-    <section className="panel role-panel" aria-label="Role Selection">
-      <div>
-        <h2 className="panel-title">Workspace Role</h2>
-        <p className="panel-subtitle">Switch roles to preview permissions and workflow states.</p>
-      </div>
-
-      <div className="role-grid" role="radiogroup" aria-label="Select role">
-        {roles.map((value) => {
-          const active = value === role;
-          return (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              className={`role-chip ${active ? 'active' : ''}`}
-              onClick={() => onChange(value)}
-            >
-              <span className="role-chip-title">{value}</span>
-              <span className="role-chip-desc">{roleDescriptions[value]}</span>
-            </button>
-          );
-        })}
-      </div>
-    </section>
+    <div style={{
+      display: 'flex',
+      gap: 10,
+      flexWrap: 'wrap',
+      alignItems: 'center'
+    }}>
+      <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginRight: 4 }}>Role:</span>
+      {roles.map((r) => (
+        <button
+          key={r}
+          onClick={() => onChange(r)}
+          title={roleDesc[r]}
+          style={{
+            padding: '6px 16px',
+            borderRadius: 20,
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            background: role === r ? 'var(--accent)' : 'var(--surface2)',
+            color: role === r ? '#fff' : 'var(--text-muted)',
+            border: role === r ? '2px solid var(--accent)' : '2px solid var(--border)',
+            transition: 'all 0.2s'
+          }}
+        >
+          {roleEmoji[r]} {r.charAt(0).toUpperCase() + r.slice(1)}
+        </button>
+      ))}
+    </div>
   );
 }

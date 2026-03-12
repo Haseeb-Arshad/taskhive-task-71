@@ -1,22 +1,23 @@
 export type Role = 'writer' | 'editor' | 'admin';
 
-export type PostStatus = 'draft' | 'scheduled' | 'published';
+export type PostStatus = 'draft' | 'published' | 'scheduled' | 'archived';
 
 export interface Post {
   id: string;
   title: string;
   content: string;
-  metaDescription: string;
   excerpt: string;
+  metaDescription: string;
   category: string;
   tags: string[];
   status: PostStatus;
-  scheduledFor: string | null;
-  seoScore: number;
-  authorRole: Role;
-  views: number;
+  author: string;
   createdAt: string;
   updatedAt: string;
+  scheduledFor?: string;
+  seoScore: number;
+  views: number;
+  readingTime: number;
 }
 
 export interface EditorDraft {
@@ -30,13 +31,11 @@ export interface EditorDraft {
 
 export interface SeoAnalysis {
   score: number;
-  checks: {
-    titleLength: boolean;
-    contentLength: boolean;
-    metaDescriptionLength: boolean;
-    keywordInTitle: boolean;
-    keywordInContent: boolean;
-    hasTags: boolean;
-  };
-  suggestions: string[];
+  checks: SeoCheck[];
+}
+
+export interface SeoCheck {
+  label: string;
+  passed: boolean;
+  message: string;
 }

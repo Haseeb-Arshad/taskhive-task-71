@@ -1,148 +1,200 @@
-import { EditorDraft, SeoAnalysis } from '@/lib/types';
+'use client';
 
-type EditorPanelProps = {
+import { SeoPanel } from '@/components/SeoPanel';
+import { SeoAnalysis, EditorDraft, Role } from '@/lib/types';
+
+interface Props {
   draft: EditorDraft;
-  seo: SeoAnalysis;
-  canPublishNow: boolean;
-  onChange: (next: EditorDraft) => void;
-  onSaveDraftPost: () => void;
-  onPublishNow: () => void;
+  onChange: (d: EditorDraft) => void;
+  onPublish: () => void;
+  onSaveDraft: () => void;
   onSchedule: () => void;
-  onSpiceUpIntro: () => void;
   onClear: () => void;
+  onInjectHook: () => void;
+  seo: SeoAnalysis;
+  role: Role;
   statusMessage: string;
-};
+}
+
+const CATEGORIES = ['Technology', 'Lifestyle', 'Business', 'Health', 'Travel', 'Food', 'Finance', 'Education', 'Entertainment', 'Science'];
 
 export function EditorPanel({
-  draft,
-  seo,
-  canPublishNow,
-  onChange,
-  onSaveDraftPost,
-  onPublishNow,
-  onSchedule,
-  onSpiceUpIntro,
-  onClear,
-  statusMessage
-}: EditorPanelProps) {
-  const update = <K extends keyof EditorDraft>(key: K, value: EditorDraft[K]) => {
-    onChange({ ...draft, [key]: value });
-  };
+  draft, onChange, onPublish, onSaveDraft, onSchedule, onClear, onInjectHook, seo, role, statusMessage
+}: Props) {
+  const set = (key: keyof EditorDraft, value: string) => onChange({ ...draft, [key]: value });
+
+  const wordCount = draft.content.trim().split(/\s+/).filter(Boolean).length;
+  const readMins = Math.max(1, Math.ceil(wordCount / 200));
+
+  const canPublish = role === 'editor' || role === 'admin';
+  const canSchedule = role === 'editor' || role === 'admin';
 
   return (
-    <section className="panel">
-      <div className="editor-header-row">
-        <div>
-          <h2 className="panel-title">Creator Studio</h2>
-          <p className="panel-subtitle">
-            Write like a pro. Entertain like a storyteller. Publish with confidence.
-          </p>
+    <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+      {/* Left: Editor */}
+      <div style={{ flex: '1 1 480px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Status bar */}
+        <div style={{
+          padding: '8px 14px',
+          borderRadius: 8,
+          background: 'var(--surface2)',
+          fontSize: '0.8rem',
+          color: 'var(--text-muted)',
+          border: '1px solid var(--border)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 8
+        }}>
+          <span>💾 {statusMessage}</span>
+          <span>{wordCount} words · ~{readMins} min read</span>
         </div>
-        <div className={`seo-pill ${seo.score >= 80 ? 'good' : seo.score >= 55 ? 'ok' : 'bad'}`}>
-          SEO Score: {seo.score}
-        </div>
-      </div>
 
-      <div className="editor-grid">
-        <label className="field">
-          <span>Title</span>
+        {/* Title */}
+        <div>
+          <label style={labelStyle}>Post Title *</label>
           <input
             value={draft.title}
-            onChange={(e) => update('title', e.target.value)}
-            placeholder="e.g. The Future of AI Storytelling in Content Marketing"
+            onChange={(e) => set('title', e.target.value)}
+            placeholder="Write a compelling, keyword-rich title..."
+            style={{ width: '100%', fontSize: '1.1rem', padding: '12px 16px' }}
           />
-        </label>
+          <div style={charCountStyle}>{draft.title.length}/70 chars</div>
+        </div>
 
-        <label className="field">
-          <span>Category</span>
-          <input
-            value={draft.category}
-            onChange={(e) => update('category', e.target.value)}
-            placeholder="Writing, Marketing, Tech, Lifestyle..."
-          />
-        </label>
+        {/* Category + Tags row */}
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 180px' }}>
+            <label style={labelStyle}>Category</label>
+            <select
+              value={draft.category}
+              onChange={(e) => set('category', e.target.value)}
+              style={{ width: '100%' }}
+            >
+              <option value="">Select category...</option>
+              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div style={{ flex: '2 1 240px' }}>
+            <label style={labelStyle}>Tags (comma-separated)</label>
+            <input
+              value={draft.tagsInput}
+              onChange={(e) => set('tagsInput', e.target.value)}
+              placeholder="e.g. react, nextjs, webdev"
+              style={{ width: '100%' }}
+            />
+          </div>
+        </div>
 
-        <label className="field full">
-          <span>Meta Description (120–160 chars)</span>
+        {/* Meta description */}
+        <div>
+          <label style={labelStyle}>Meta Description (120–160 chars for SEO)</label>
           <textarea
             value={draft.metaDescription}
-            onChange={(e) => update('metaDescription', e.target.value)}
+            onChange={(e) => set('metaDescription', e.target.value)}
+            placeholder="Summarise your post for search engines..."
             rows={2}
-            placeholder="Summarize your post in a search-friendly way."
+            style={{ width: '100%', resize: 'vertical' }}
           />
-        </label>
+          <div style={charCountStyle}>{draft.metaDescription.length}/160 chars</div>
+        </div>
 
-        <label className="field full">
-          <span>Content</span>
+        {/* Content */}
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <label style={{ ...labelStyle, margin: 0 }}>Content (Markdown supported)</label>
+            <button
+              onClick={onInjectHook}
+              style={{
+                fontSize: '0.78rem',
+                padding: '4px 12px',
+                borderRadius: 6,
+                background: 'var(--accent2)',
+                color: '#fff',
+                fontWeight: 600
+              }}
+            >
+              ✨ Inject Hook
+            </button>
+          </div>
           <textarea
             value={draft.content}
-            onChange={(e) => update('content', e.target.value)}
-            rows={10}
-            placeholder="Start writing your entertaining and professional article here..."
+            onChange={(e) => set('content', e.target.value)}
+            placeholder={`Start writing your masterpiece...\n\nTips:\n## Use headings for structure\n- Bullet points work great\n**Bold** and *italic* for emphasis`}
+            rows={18}
+            style={{ width: '100%', resize: 'vertical', fontFamily: 'monospace', lineHeight: 1.7 }}
           />
-        </label>
+        </div>
 
-        <label className="field">
-          <span>Tags (comma-separated)</span>
-          <input
-            value={draft.tagsInput}
-            onChange={(e) => update('tagsInput', e.target.value)}
-            placeholder="seo, storytelling, content strategy"
-          />
-        </label>
-
-        <label className="field">
-          <span>Schedule for</span>
-          <input
-            type="datetime-local"
-            value={draft.scheduledFor}
-            onChange={(e) => update('scheduledFor', e.target.value)}
-          />
-        </label>
-      </div>
-
-      <div className="action-row">
-        <button className="btn ghost" type="button" onClick={onSpiceUpIntro}>
-          Spice Up Intro ✨
-        </button>
-        <button className="btn" type="button" onClick={onSaveDraftPost}>
-          Save as Draft
-        </button>
-        <button className="btn warning" type="button" onClick={onSchedule}>
-          Schedule Post
-        </button>
-        <button className="btn success" type="button" disabled={!canPublishNow} onClick={onPublishNow}>
-          Publish Now
-        </button>
-        <button className="btn danger" type="button" onClick={onClear}>
-          Clear
-        </button>
-      </div>
-
-      <div className="status-line" aria-live="polite">
-        {statusMessage}
-      </div>
-
-      <div className="seo-checks" aria-label="SEO checklist">
-        <h3>SEO Checklist</h3>
-        <ul>
-          <li className={seo.checks.titleLength ? 'pass' : 'fail'}>Title length optimized</li>
-          <li className={seo.checks.contentLength ? 'pass' : 'fail'}>Content length is substantial</li>
-          <li className={seo.checks.metaDescriptionLength ? 'pass' : 'fail'}>
-            Meta description length is ideal
-          </li>
-          <li className={seo.checks.keywordInTitle ? 'pass' : 'fail'}>Primary keyword in title</li>
-          <li className={seo.checks.keywordInContent ? 'pass' : 'fail'}>Primary keyword in content</li>
-          <li className={seo.checks.hasTags ? 'pass' : 'fail'}>Multiple tags attached</li>
-        </ul>
-        {seo.suggestions.length > 0 && (
-          <div className="seo-suggestions">
-            {seo.suggestions.map((item) => (
-              <p key={item}>• {item}</p>
-            ))}
+        {/* Schedule */}
+        {canSchedule && (
+          <div>
+            <label style={labelStyle}>Schedule Publish Date (optional)</label>
+            <input
+              type="datetime-local"
+              value={draft.scheduledFor}
+              onChange={(e) => set('scheduledFor', e.target.value)}
+              style={{ width: '100%' }}
+            />
           </div>
         )}
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button onClick={onSaveDraft} style={btnStyle('var(--surface2)', 'var(--text)')}>
+            💾 Save Draft
+          </button>
+          {canPublish && (
+            <button onClick={onPublish} style={btnStyle('var(--accent)', '#fff')}>
+              🚀 Publish Now
+            </button>
+          )}
+          {canSchedule && draft.scheduledFor && (
+            <button onClick={onSchedule} style={btnStyle('#f9ca24', '#1a1d27')}>
+              📅 Schedule
+            </button>
+          )}
+          <button onClick={onClear} style={btnStyle('var(--surface2)', 'var(--accent2)')}>
+            🗑️ Clear
+          </button>
+        </div>
       </div>
-    </section>
+
+      {/* Right: SEO Panel */}
+      <div style={{ flex: '0 1 320px', minWidth: 260 }}>
+        <SeoPanel seo={seo} />
+      </div>
+    </div>
   );
+}
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: '0.82rem',
+  fontWeight: 600,
+  color: 'var(--text-muted)',
+  marginBottom: 6,
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em'
+};
+
+const charCountStyle: React.CSSProperties = {
+  fontSize: '0.75rem',
+  color: 'var(--text-muted)',
+  textAlign: 'right',
+  marginTop: 4
+};
+
+function btnStyle(bg: string, color: string): React.CSSProperties {
+  return {
+    padding: '10px 20px',
+    borderRadius: 8,
+    fontWeight: 700,
+    fontSize: '0.9rem',
+    background: bg,
+    color,
+    border: '1px solid var(--border)',
+    transition: 'opacity 0.2s'
+  };
 }
