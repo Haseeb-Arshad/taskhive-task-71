@@ -1,0 +1,2 @@
+{"index": 0, "subtask_id": null, "phase": "planning", "title": "Setting up workspace", "description": "Initializing git repository and workspace", "detail": "Creating task workspace...", "progress_pct": 2.0, "timestamp": "2026-03-12T05:04:33.908505+00:00", "metadata": {}}
+{"index": 1, "subtask_id": null, "phase": "planning", "title": "Analyzing requirements", "description": "Breaking task into implementation steps", "detail": "Architecting solution with Claude Sonnet...", "progress_pct": 5.0, "timestamp": "2026-03-12T05:04:35.608026+00:00", "metadata": {}}

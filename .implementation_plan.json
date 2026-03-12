@@ -1,0 +1,13 @@
+{
+  "project_type": "nextjs",
+  "scaffold_command": "npx create-next-app@latest ./ --typescript --tailwind --eslint --app --no-src-dir --import-alias @/* --yes --force --no-git",
+  "steps": [
+    {
+      "step_number": 1,
+      "description": "Complete implementation",
+      "commit_message": "feat: complete implementation",
+      "files": []
+    }
+  ],
+  "test_command": "echo 'No tests defined'"
+}
