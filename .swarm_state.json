@@ -28,7 +28,7 @@
   },
   "repo_url": "https://github.com/Haseeb-Arshad/taskhive-task-71",
   "scaffolded": true,
-  "cached_blueprint": "",
-  "test_errors": "BUILD FAILED \u2014 fix these errors before tests can run:\n> blog-post-portal@1.0.0 build\n> next build\n\n\nsh: 1: next: not found",
+  "cached_blueprint": "You are the Coder Agent. We are building a solution for this task:\nTitle: Blog Post Portal\nDescription: I want a raelly entertaining blog post writer and professional one.. with advanced features\nRequirements: \n",
+  "test_errors": "Implementation incomplete: only 0/1 steps were committed. Continue coding instead of advancing.",
   "test_iteration": 1
 }

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Blog Post Portal with rich editor, scheduling, SEO scoring, role-based actions, autosave, and analytics." />
+    <title>Blog Post Portal Pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Merriweather:wght@700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-wrap">
+          <div class="brand-badge">✍️</div>
+          <div>
+            <h1>Blog Post Portal Pro</h1>
+            <p class="subtitle">Entertaining + professional publishing workflow in one place</p>
+          </div>
+        </div>
+
+        <div class="top-controls" aria-label="User controls">
+          <label class="control-group">
+            <span>Display Name</span>
+            <input id="displayName" type="text" maxlength="40" placeholder="Your name" />
+          </label>
+          <label class="control-group">
+            <span>Role</span>
+            <select id="roleSelect">
+              <option value="writer">Writer</option>
+              <option value="editor">Editor</option>
+              <option value="admin">Admin</option>
+            </select>
+          </label>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel editor-panel" aria-labelledby="editorHeading">
+          <div class="panel-head">
+            <h2 id="editorHeading">Smart Editor</h2>
+            <button id="ideaBtn" class="btn btn-ghost" type="button">✨ Spark Idea</button>
+          </div>
+
+          <p id="ideaText" class="idea-text" aria-live="polite"></p>
+
+          <form id="editorForm" novalidate>
+            <div class="grid-2">
+              <label>
+                Title
+                <input id="title" required maxlength="120" type="text" placeholder="Write a magnetic headline..." />
+              </label>
+              <label>
+                Category
+                <select id="category">
+                  <option>Technology</option>
+                  <option>Business</option>
+                  <option>Productivity</option>
+                  <option>Lifestyle</option>
+                  <option>AI</option>
+                  <option>Marketing</option>
+                </select>
+              </label>
+            </div>
+
+            <label>
+              Excerpt
+              <input id="excerpt" maxlength="180" type="text" placeholder="1-line summary shown in post cards" />
+            </label>
+
+            <label>
+              Tags (comma separated)
+              <input id="tags" type="text" maxlength="200" placeholder="seo, growth, storytelling" />
+            </label>
+
+            <label>
+              Content
+              <textarea id="content" required rows="12" placeholder="Write your post content here..."></textarea>
+            </label>
+
+            <fieldset>
+              <legend>SEO Assistant</legend>
+              <div class="grid-2">
+                <label>
+                  Focus Keyword
+                  <input id="focusKeyword" type="text" maxlength="60" placeholder="e.g., content marketing" />
+                </label>
+                <label>
+                  Slug
+                  <input id="slug" type="text" maxlength="90" placeholder="auto-generated-from-title" />
+                </label>
+              </div>
+              <label>
+                Meta Description
+                <textarea id="metaDescription" rows="3" maxlength="170" placeholder="Describe your post for search engines (140-160 chars ideal)"></textarea>
+              </label>
+
+              <div class="seo-wrap">
+                <div class="seo-bar" aria-hidden="true"><span id="seoMeter"></span></div>
+                <div id="seoScoreText" class="seo-score">SEO Score: 0 / 100</div>
+              </div>
+            </fieldset>
+
+            <div class="grid-2">
+              <label>
+                Schedule (optional)
+                <input id="scheduleAt" type="datetime-local" />
+              </label>
+              <label>
+                Status
+                <input id="statusPreview" type="text" readonly value="draft" />
+              </label>
+            </div>
+
+            <div class="editor-actions">
+              <button id="saveDraftBtn" class="btn btn-secondary" type="button">Save Draft</button>
+              <button id="publishBtn" class="btn btn-primary" type="submit">Publish / Schedule</button>
+              <button id="resetBtn" class="btn btn-ghost" type="button">Reset</button>
+            </div>
+
+            <div class="meta-row">
+              <span id="autosaveState">Autosave: idle</span>
+              <span id="editorMode">Mode: Creating new post</span>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel portal-panel" aria-labelledby="portalHeading">
+          <div class="panel-head">
+            <h2 id="portalHeading">Post Portal</h2>
+            <div class="pill" id="liveClock" aria-live="polite"></div>
+          </div>
+
+          <div class="filters">
+            <input id="searchInput" type="search" placeholder="Search title, content, category, tags..." />
+            <select id="filterCategory">
+              <option value="all">All Categories</option>
+            </select>
+            <select id="filterStatus">
+              <option value="all">All Statuses</option>
+              <option value="draft">Draft</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="published">Published</option>
+            </select>
+          </div>
+
+          <div id="postsContainer" class="post-list" aria-live="polite"></div>
+        </section>
+
+        <section class="panel analytics-panel" aria-labelledby="analyticsHeading">
+          <div class="panel-head">
+            <h2 id="analyticsHeading">Analytics</h2>
+            <button id="refreshAnalyticsBtn" class="btn btn-ghost" type="button">Refresh</button>
+          </div>
+
+          <div class="kpis" id="kpis"></div>
+
+          <div class="chart-grid">
+            <article>
+              <h3>Category Distribution</h3>
+              <div id="categoryChart" class="bars"></div>
+            </article>
+            <article>
+              <h3>Top Tags</h3>
+              <div id="tagChart" class="bars"></div>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
