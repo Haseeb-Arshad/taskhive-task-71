@@ -1,630 +1,253 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo, useState } from "react";
-import {
-  CATEGORIES,
-  type BlogPost,
-  type EditorDraft,
-  type Role,
-  calculateSeoScore,
-  createSlug,
-  estimateReadTime,
-  parseTags,
-  stripMarkdown,
-} from "@/lib/blog";
-import {
-  clearDraft,
-  loadDraft,
-  loadPosts,
-  loadRole,
-  saveDraft,
-  savePosts,
-  saveRole,
-} from "@/lib/persistence";
+import { useEffect, useMemo, useState } from 'react';
+import { AnalyticsPanel } from '@/components/AnalyticsPanel';
+import { EditorPanel } from '@/components/EditorPanel';
+import { PostListPanel } from '@/components/PostListPanel';
+import { RoleSwitcher } from '@/components/RoleSwitcher';
+import { analyzeSeo } from '@/lib/seo';
+import { clearDraft, loadDraft, loadPosts, saveDraft, savePosts } from '@/lib/storage';
+import { EditorDraft, Post, PostStatus, Role } from '@/lib/types';
 
-type Tab = "editor" | "posts" | "portal" | "analytics";
-
-const EMPTY_EDITOR: EditorDraft = {
-  id: null,
-  title: "",
-  excerpt: "",
-  content: "",
-  category: CATEGORIES[0],
-  tagsInput: "",
-  seoKeyword: "",
-  metaDescription: "",
-  scheduledAt: "",
+const defaultDraft: EditorDraft = {
+  title: '',
+  content: '',
+  metaDescription: '',
+  category: '',
+  tagsInput: '',
+  scheduledFor: ''
 };
 
-function nowISODateTimeLocal(): string {
-  const d = new Date(Date.now() + 5 * 60 * 1000);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const hours = String(d.getHours()).padStart(2, "0");
-  const mins = String(d.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day}T${hours}:${mins}`;
+function parseTags(input: string): string[] {
+  return input
+    .split(',')
+    .map((tag) => tag.trim().toLowerCase())
+    .filter(Boolean);
 }
 
-function renderArticle(content: string): string {
-  const escaped = content
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+function makeExcerpt(text: string): string {
+  const raw = text.replace(/\s+/g, ' ').trim();
+  if (raw.length <= 160) return raw;
+  return `${raw.slice(0, 160)}...`;
+}
 
-  return escaped
-    .split("\n")
-    .map((line) => {
-      if (line.startsWith("### ")) return `<h3>${line.slice(4)}</h3>`;
-      if (line.startsWith("## ")) return `<h2>${line.slice(3)}</h2>`;
-      if (line.startsWith("# ")) return `<h2>${line.slice(2)}</h2>`;
-      if (!line.trim()) return "";
-      return `<p>${line}</p>`;
-    })
-    .join("\n");
+function buildHook(title: string, category: string): string {
+  const safeTitle = title.trim() || 'this topic';
+  const safeCategory = category.trim() || 'content creation';
+  const hooks = [
+    `What if everything you knew about ${safeCategory} was only half the story?`,
+    `Before we dive in, here is the twist: most people fail at ${safeTitle} for one surprisingly simple reason.`,
+    `Confession: I used to overcomplicate ${safeTitle} — until a deadline forced a smarter playbook.`,
+    `The internet loves shortcuts, but in ${safeCategory}, one strategic habit beats ten hacks.`
+  ];
+  return hooks[Math.floor(Math.random() * hooks.length)];
 }
 
 export default function HomePage() {
-  const [tab, setTab] = useState<Tab>("editor");
-  const [role, setRole] = useState<Role>("writer");
-  const [posts, setPosts] = useState<BlogPost[]>([]);
-  const [editor, setEditor] = useState<EditorDraft>(EMPTY_EDITOR);
-  const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
-  const [autosaveStamp, setAutosaveStamp] = useState<string>("Never");
+  const [role, setRole] = useState<Role>('writer');
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [draft, setDraft] = useState<EditorDraft>(defaultDraft);
+  const [statusMessage, setStatusMessage] = useState('Autosave enabled. Your draft is protected locally.');
+
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<PostStatus | 'all'>('all');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [activeTab, setActiveTab] = useState<'studio' | 'posts' | 'analytics'>('studio');
 
   useEffect(() => {
     setPosts(loadPosts());
-    setRole(loadRole());
-    const cachedDraft = loadDraft();
-    if (cachedDraft) setEditor(cachedDraft);
+    const storedDraft = loadDraft();
+    if (storedDraft) setDraft(storedDraft);
   }, []);
 
   useEffect(() => {
-    savePosts(posts);
-  }, [posts]);
+    const timeout = window.setTimeout(() => {
+      saveDraft(draft);
+      setStatusMessage('Draft autosaved.');
+    }, 700);
+
+    return () => window.clearTimeout(timeout);
+  }, [draft]);
 
   useEffect(() => {
-    saveRole(role);
-  }, [role]);
+    const timer = window.setInterval(() => {
+      setPosts((prev) => {
+        const now = Date.now();
+        let changed = false;
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      saveDraft(editor);
-      setAutosaveStamp(new Date().toLocaleTimeString());
-    }, 900);
-
-    return () => window.clearTimeout(timer);
-  }, [editor]);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      const now = Date.now();
-      setPosts((prev) =>
-        prev.map((post) => {
-          if (post.status !== "scheduled" || !post.scheduledAt) return post;
-          if (new Date(post.scheduledAt).getTime() <= now) {
+        const next = prev.map((post) => {
+          if (post.status === 'scheduled' && post.scheduledFor && new Date(post.scheduledFor).getTime() <= now) {
+            changed = true;
             return {
               ...post,
-              status: "published",
-              publishedAt: new Date().toISOString(),
+              status: 'published',
               updatedAt: new Date().toISOString(),
+              views: post.views + Math.floor(Math.random() * 40) + 5
             };
           }
           return post;
-        })
-      );
-    }, 30000);
+        });
 
-    return () => window.clearInterval(interval);
+        if (changed) {
+          savePosts(next);
+          setStatusMessage('Scheduled post(s) moved to published.');
+        }
+
+        return next;
+      });
+    }, 30_000);
+
+    return () => window.clearInterval(timer);
   }, []);
 
-  const seo = useMemo(() => {
-    return calculateSeoScore({
-      title: editor.title,
-      content: editor.content,
-      seoKeyword: editor.seoKeyword,
-      metaDescription: editor.metaDescription,
-      tags: parseTags(editor.tagsInput),
-    });
-  }, [editor]);
+  const seo = useMemo(
+    () => analyzeSeo(draft.title, draft.content, draft.metaDescription, parseTags(draft.tagsInput)),
+    [draft]
+  );
 
   const filteredPosts = useMemo(() => {
-    const q = search.toLowerCase();
     return posts
-      .filter((post) => (categoryFilter === "all" ? true : post.category === categoryFilter))
       .filter((post) => {
-        if (!q) return true;
-        return (
-          post.title.toLowerCase().includes(q) ||
-          post.excerpt.toLowerCase().includes(q) ||
-          post.tags.join(" ").toLowerCase().includes(q)
-        );
+        const textMatch =
+          search.trim().length === 0 ||
+          `${post.title} ${post.content} ${post.tags.join(' ')} ${post.category}`
+            .toLowerCase()
+            .includes(search.toLowerCase());
+        const statusMatch = statusFilter === 'all' || post.status === statusFilter;
+        const categoryMatch =
+          categoryFilter.trim().length === 0 ||
+          post.category.toLowerCase().includes(categoryFilter.toLowerCase());
+        return textMatch && statusMatch && categoryMatch;
       })
       .sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
-  }, [posts, search, categoryFilter]);
+  }, [posts, search, statusFilter, categoryFilter]);
 
-  const publishedPosts = useMemo(
-    () => filteredPosts.filter((p) => p.status === "published"),
-    [filteredPosts]
-  );
-
-  const selectedPost = useMemo(
-    () => posts.find((p) => p.id === selectedPostId) ?? null,
-    [posts, selectedPostId]
-  );
-
-  const stats = useMemo(() => {
-    const totalViews = posts.reduce((sum, p) => sum + p.analytics.views, 0);
-    const totalLikes = posts.reduce((sum, p) => sum + p.analytics.likes, 0);
-    const published = posts.filter((p) => p.status === "published").length;
-    const scheduled = posts.filter((p) => p.status === "scheduled").length;
-    const drafts = posts.filter((p) => p.status === "draft").length;
-    const avgSeo = posts.length
-      ? Math.round(posts.reduce((sum, p) => sum + p.seoScore, 0) / posts.length)
-      : 0;
-
-    return { totalViews, totalLikes, published, scheduled, drafts, avgSeo };
-  }, [posts]);
-
-  function resetEditor() {
-    setEditor(EMPTY_EDITOR);
+  const resetDraft = () => {
+    setDraft(defaultDraft);
     clearDraft();
-  }
+    setStatusMessage('Editor cleared.');
+  };
 
-  function upsertPost(nextStatus: BlogPost["status"]) {
-    if (!editor.title.trim() || !editor.content.trim()) {
-      alert("Title and content are required.");
+  const persistPost = (status: PostStatus) => {
+    if (!draft.title.trim() || !draft.content.trim()) {
+      setStatusMessage('Title and content are required.');
       return;
     }
 
-    if (nextStatus === "published" && role === "writer") {
-      alert("Writer role cannot publish directly. Switch to editor/admin.");
+    if (status === 'scheduled' && !draft.scheduledFor) {
+      setStatusMessage('Pick a schedule date/time first.');
       return;
     }
 
-    const tags = parseTags(editor.tagsInput);
-    const score = calculateSeoScore({
-      title: editor.title,
-      content: editor.content,
-      seoKeyword: editor.seoKeyword,
-      metaDescription: editor.metaDescription,
-      tags,
-    }).score;
+    if (status === 'published' && role === 'writer') {
+      setStatusMessage('Writer role cannot publish immediately. Switch to editor/admin.');
+      return;
+    }
 
-    const timestamp = new Date().toISOString();
-    const base: BlogPost = {
-      id: editor.id ?? crypto.randomUUID(),
-      slug: createSlug(editor.title),
-      title: editor.title.trim(),
-      excerpt: editor.excerpt.trim() || stripMarkdown(editor.content).slice(0, 140),
-      content: editor.content,
-      category: editor.category,
+    const tags = parseTags(draft.tagsInput);
+    const nowIso = new Date().toISOString();
+
+    const post: Post = {
+      id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Date.now()),
+      title: draft.title.trim(),
+      content: draft.content.trim(),
+      metaDescription: draft.metaDescription.trim(),
+      excerpt: makeExcerpt(draft.content),
+      category: draft.category.trim() || 'General',
       tags,
-      status: nextStatus,
-      seoKeyword: editor.seoKeyword.trim(),
-      metaDescription: editor.metaDescription.trim(),
-      seoScore: score,
-      authorName: role === "writer" ? "Writer Desk" : role === "editor" ? "Editorial Team" : "Admin Team",
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      scheduledAt: nextStatus === "scheduled" ? new Date(editor.scheduledAt).toISOString() : null,
-      publishedAt: nextStatus === "published" ? timestamp : null,
-      analytics: {
-        views: 0,
-        likes: 0,
-        readTimeMinutes: estimateReadTime(editor.content),
-      },
+      status,
+      scheduledFor: status === 'scheduled' ? new Date(draft.scheduledFor).toISOString() : null,
+      seoScore: seo.score,
+      authorRole: role,
+      views: status === 'published' ? Math.floor(Math.random() * 100) + 25 : 0,
+      createdAt: nowIso,
+      updatedAt: nowIso
     };
 
-    setPosts((prev) => {
-      const existing = prev.find((p) => p.id === base.id);
-      if (!existing) return [base, ...prev];
+    const next = [post, ...posts];
+    setPosts(next);
+    savePosts(next);
 
-      return prev.map((p) =>
-        p.id === base.id
-          ? {
-              ...p,
-              ...base,
-              createdAt: p.createdAt,
-              analytics: p.analytics,
-            }
-          : p
-      );
-    });
+    if (status === 'draft') setStatusMessage('Draft post saved to portal.');
+    if (status === 'scheduled') setStatusMessage('Post scheduled successfully.');
+    if (status === 'published') setStatusMessage('Post published successfully 🎉');
 
-    resetEditor();
-    setTab("posts");
-  }
+    resetDraft();
+  };
 
-  function editPost(post: BlogPost) {
-    setEditor({
-      id: post.id,
-      title: post.title,
-      excerpt: post.excerpt,
-      content: post.content,
-      category: post.category,
-      tagsInput: post.tags.join(", "),
-      seoKeyword: post.seoKeyword,
-      metaDescription: post.metaDescription,
-      scheduledAt: post.scheduledAt ? post.scheduledAt.slice(0, 16) : nowISODateTimeLocal(),
-    });
-    setTab("editor");
-  }
+  const deletePost = (id: string) => {
+    const next = posts.filter((post) => post.id !== id);
+    setPosts(next);
+    savePosts(next);
+    setStatusMessage('Post deleted.');
+  };
 
-  function deletePost(id: string) {
-    if (!confirm("Delete this post permanently?")) return;
-    setPosts((prev) => prev.filter((p) => p.id !== id));
-    if (selectedPostId === id) setSelectedPostId(null);
-  }
-
-  function quickPublish(id: string) {
-    if (role === "writer") {
-      alert("Writer role cannot publish directly.");
-      return;
-    }
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? {
-              ...p,
-              status: "published",
-              publishedAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              scheduledAt: null,
-            }
-          : p
-      )
-    );
-  }
-
-  function openPost(id: string) {
-    setSelectedPostId(id);
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? {
-              ...p,
-              analytics: { ...p.analytics, views: p.analytics.views + 1 },
-            }
-          : p
-      )
-    );
-  }
-
-  function likePost(id: string) {
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? {
-              ...p,
-              analytics: { ...p.analytics, likes: p.analytics.likes + 1 },
-            }
-          : p
-      )
-    );
-  }
+  const spiceUpIntro = () => {
+    const hook = buildHook(draft.title, draft.category);
+    const nextContent = draft.content.trim().length > 0 ? `${hook}\n\n${draft.content}` : `${hook}\n\n`;
+    setDraft((prev) => ({ ...prev, content: nextContent }));
+    setStatusMessage('Intro upgraded with an entertaining hook ✨');
+  };
 
   return (
-    <main className="portal-shell">
+    <main className="shell">
       <header className="hero">
-        <h1>📝 Blog Post Portal</h1>
-        <p>
-          Entertaining + professional publishing suite with roles, SEO scoring, search, scheduling,
-          autosave drafts, and analytics.
-        </p>
-        <div className="row">
-          <span className="badge">Current role:</span>
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value as Role)}
-            aria-label="Switch role"
-          >
-            <option value="writer">Writer</option>
-            <option value="editor">Editor</option>
-            <option value="admin">Admin</option>
-          </select>
-          <span className="badge">Autosaved: {autosaveStamp}</span>
+        <div>
+          <p className="eyebrow">Blog Post Portal</p>
+          <h1>Professional Publishing. Entertaining Writing. One Smart Workspace.</h1>
+          <p>
+            Complete MVP + advanced workflow: role-based creation, autosave drafts, SEO scoring, scheduling,
+            searchable portal, and analytics.
+          </p>
         </div>
       </header>
 
-      <nav className="nav-tabs" aria-label="Sections">
-        <button className={`tab-btn ${tab === "editor" ? "active" : ""}`} onClick={() => setTab("editor")}>Editor</button>
-        <button className={`tab-btn ${tab === "posts" ? "active" : ""}`} onClick={() => setTab("posts")}>Manage Posts</button>
-        <button className={`tab-btn ${tab === "portal" ? "active" : ""}`} onClick={() => setTab("portal")}>Reader Portal</button>
-        <button className={`tab-btn ${tab === "analytics" ? "active" : ""}`} onClick={() => setTab("analytics")}>Analytics</button>
+      <RoleSwitcher role={role} onChange={setRole} />
+
+      <nav className="tabs" aria-label="Portal sections">
+        <button className={`tab ${activeTab === 'studio' ? 'active' : ''}`} onClick={() => setActiveTab('studio')}>
+          Studio
+        </button>
+        <button className={`tab ${activeTab === 'posts' ? 'active' : ''}`} onClick={() => setActiveTab('posts')}>
+          Posts
+        </button>
+        <button
+          className={`tab ${activeTab === 'analytics' ? 'active' : ''}`}
+          onClick={() => setActiveTab('analytics')}
+        >
+          Analytics
+        </button>
       </nav>
 
-      {tab === "editor" && (
-        <section className="grid cols-2">
-          <article className="card panel grid">
-            <label>
-              Post Title
-              <input
-                value={editor.title}
-                onChange={(e) => setEditor((s) => ({ ...s, title: e.target.value }))}
-                placeholder="Craft a magnetic title..."
-              />
-            </label>
-
-            <label>
-              Excerpt
-              <textarea
-                value={editor.excerpt}
-                onChange={(e) => setEditor((s) => ({ ...s, excerpt: e.target.value }))}
-                style={{ minHeight: 90 }}
-                placeholder="Short teaser shown in listing cards"
-              />
-            </label>
-
-            <label>
-              Rich Content (Markdown-friendly)
-              <textarea
-                value={editor.content}
-                onChange={(e) => setEditor((s) => ({ ...s, content: e.target.value }))}
-                placeholder="# Headline\n## Subsection\nWrite your article here..."
-              />
-            </label>
-
-            <div className="grid cols-3">
-              <label>
-                Category
-                <select
-                  value={editor.category}
-                  onChange={(e) => setEditor((s) => ({ ...s, category: e.target.value }))}
-                >
-                  {CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Tags (comma-separated)
-                <input
-                  value={editor.tagsInput}
-                  onChange={(e) => setEditor((s) => ({ ...s, tagsInput: e.target.value }))}
-                  placeholder="seo, storytelling, ai"
-                />
-              </label>
-
-              <label>
-                Primary SEO Keyword
-                <input
-                  value={editor.seoKeyword}
-                  onChange={(e) => setEditor((s) => ({ ...s, seoKeyword: e.target.value }))}
-                  placeholder="blog writing"
-                />
-              </label>
-            </div>
-
-            <label>
-              Meta Description
-              <textarea
-                value={editor.metaDescription}
-                onChange={(e) => setEditor((s) => ({ ...s, metaDescription: e.target.value }))}
-                style={{ minHeight: 90 }}
-                placeholder="Search snippet (70-160 chars recommended)."
-              />
-            </label>
-
-            <div className="row">
-              <button className="btn" onClick={() => upsertPost("draft")}>Save Draft</button>
-              <button className="btn warn" onClick={() => setEditor((s) => ({ ...s, scheduledAt: s.scheduledAt || nowISODateTimeLocal() }))}>Prepare Schedule</button>
-              <button
-                className="btn success"
-                onClick={() => upsertPost("published")}
-                disabled={role === "writer"}
-                title={role === "writer" ? "Switch to editor/admin to publish" : "Publish now"}
-              >
-                Publish Now
-              </button>
-              <button className="btn danger" onClick={resetEditor}>Reset</button>
-            </div>
-
-            <div className="row">
-              <label>
-                Schedule datetime
-                <input
-                  type="datetime-local"
-                  value={editor.scheduledAt}
-                  onChange={(e) => setEditor((s) => ({ ...s, scheduledAt: e.target.value }))}
-                />
-              </label>
-              <button
-                className="btn primary"
-                onClick={() => {
-                  if (!editor.scheduledAt) {
-                    alert("Choose a schedule datetime first.");
-                    return;
-                  }
-                  upsertPost("scheduled");
-                }}
-              >
-                Schedule Post
-              </button>
-            </div>
-          </article>
-
-          <aside className="card panel grid">
-            <h3 style={{ margin: 0 }}>SEO Assistant</h3>
-            <div className="progress" aria-label="SEO score progress">
-              <span style={{ width: `${seo.score}%` }} />
-            </div>
-            <strong>{seo.score}/100 SEO score</strong>
-            <ul style={{ margin: 0, paddingLeft: 18, color: "var(--muted)" }}>
-              {seo.checks.map((check, index) => (
-                <li key={`${check}-${index}`}>{check}</li>
-              ))}
-            </ul>
-            <hr />
-            <h3 style={{ margin: 0 }}>Live Preview</h3>
-            <div className="meta-line">
-              Read time: {estimateReadTime(editor.content)} min • Slug: {createSlug(editor.title)}
-            </div>
-            <article className="article" dangerouslySetInnerHTML={{ __html: renderArticle(editor.content) }} />
-          </aside>
-        </section>
+      {activeTab === 'studio' && (
+        <EditorPanel
+          draft={draft}
+          seo={seo}
+          canPublishNow={role === 'editor' || role === 'admin'}
+          onChange={setDraft}
+          onSaveDraftPost={() => persistPost('draft')}
+          onPublishNow={() => persistPost('published')}
+          onSchedule={() => persistPost('scheduled')}
+          onSpiceUpIntro={spiceUpIntro}
+          onClear={resetDraft}
+          statusMessage={statusMessage}
+        />
       )}
 
-      {tab === "posts" && (
-        <section className="card panel grid">
-          <div className="row">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search title, excerpt, tags..."
-              style={{ minWidth: 260 }}
-            />
-            <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-              <option value="all">All categories</option>
-              {CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="post-list">
-            {filteredPosts.length === 0 && <small>No posts found.</small>}
-            {filteredPosts.map((post) => (
-              <article className="post-row" key={post.id}>
-                <div className="post-row-head">
-                  <h4 className="post-title">{post.title}</h4>
-                  <span className={`badge status-${post.status}`}>{post.status}</span>
-                </div>
-                <div className="meta-line">
-                  {post.category} • {post.tags.join(", ") || "no tags"} • SEO {post.seoScore}/100 • Updated{" "}
-                  {new Date(post.updatedAt).toLocaleString()}
-                </div>
-                <div>{post.excerpt}</div>
-                <div className="row">
-                  <button className="btn" onClick={() => editPost(post)}>Edit</button>
-                  {post.status !== "published" && (
-                    <button className="btn success" disabled={role === "writer"} onClick={() => quickPublish(post.id)}>
-                      Quick Publish
-                    </button>
-                  )}
-                  <button className="btn danger" onClick={() => deletePost(post.id)}>Delete</button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
+      {activeTab === 'posts' && (
+        <PostListPanel
+          posts={filteredPosts}
+          search={search}
+          statusFilter={statusFilter}
+          categoryFilter={categoryFilter}
+          onSearchChange={setSearch}
+          onStatusFilterChange={setStatusFilter}
+          onCategoryFilterChange={setCategoryFilter}
+          onDeletePost={deletePost}
+        />
       )}
 
-      {tab === "portal" && (
-        <section className="grid cols-2">
-          <article className="card panel grid">
-            <div className="row">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search published posts..."
-              />
-              <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-                <option value="all">All categories</option>
-                {CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="reader-grid">
-              {publishedPosts.map((post) => (
-                <article key={post.id} className="card reader-card" onClick={() => openPost(post.id)}>
-                  <div className="meta-line">{post.category}</div>
-                  <h4 style={{ margin: "6px 0" }}>{post.title}</h4>
-                  <p style={{ margin: 0, color: "var(--muted)" }}>{post.excerpt}</p>
-                  <div className="row" style={{ marginTop: 8 }}>
-                    {post.tags.slice(0, 3).map((tag) => (
-                      <span className="badge" key={tag}>
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                </article>
-              ))}
-              {publishedPosts.length === 0 && <small>No published posts yet.</small>}
-            </div>
-          </article>
-
-          <aside className="card panel">
-            {selectedPost ? (
-              <>
-                <h2 style={{ marginTop: 0 }}>{selectedPost.title}</h2>
-                <div className="meta-line">
-                  By {selectedPost.authorName} • {selectedPost.analytics.readTimeMinutes} min read • {selectedPost.analytics.views} views
-                </div>
-                <hr />
-                <article
-                  className="article"
-                  dangerouslySetInnerHTML={{ __html: renderArticle(selectedPost.content) }}
-                />
-                <div className="row">
-                  <button className="btn" onClick={() => likePost(selectedPost.id)}>
-                    ❤️ Like ({selectedPost.analytics.likes})
-                  </button>
-                </div>
-              </>
-            ) : (
-              <small>Select a published post to read.</small>
-            )}
-          </aside>
-        </section>
-      )}
-
-      {tab === "analytics" && (
-        <section className="grid cols-3">
-          <article className="card kpi">
-            <h3>{stats.totalViews}</h3>
-            <p>Total Views</p>
-          </article>
-          <article className="card kpi">
-            <h3>{stats.totalLikes}</h3>
-            <p>Total Likes</p>
-          </article>
-          <article className="card kpi">
-            <h3>{stats.avgSeo}%</h3>
-            <p>Average SEO score</p>
-          </article>
-
-          <article className="card panel" style={{ gridColumn: "1 / -1" }}>
-            <h3 style={{ marginTop: 0 }}>Pipeline</h3>
-            <div className="row" style={{ marginBottom: 10 }}>
-              <span className="badge status-draft">Drafts: {stats.drafts}</span>
-              <span className="badge status-scheduled">Scheduled: {stats.scheduled}</span>
-              <span className="badge status-published">Published: {stats.published}</span>
-            </div>
-            <div className="grid" style={{ gap: 12 }}>
-              {posts
-                .slice()
-                .sort((a, b) => b.analytics.views - a.analytics.views)
-                .slice(0, 8)
-                .map((post) => {
-                  const maxViews = Math.max(1, ...posts.map((p) => p.analytics.views));
-                  const width = Math.round((post.analytics.views / maxViews) * 100);
-                  return (
-                    <div key={post.id}>
-                      <div className="meta-line" style={{ marginBottom: 4 }}>
-                        {post.title} — {post.analytics.views} views / {post.analytics.likes} likes
-                      </div>
-                      <div className="progress">
-                        <span style={{ width: `${width}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              {posts.length === 0 && <small>No analytics yet. Publish and read posts to generate data.</small>}
-            </div>
-          </article>
-        </section>
-      )}
+      {activeTab === 'analytics' && <AnalyticsPanel posts={posts} />}
     </main>
   );
 }
